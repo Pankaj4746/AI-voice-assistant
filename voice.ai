@@ -1,0 +1,166 @@
+from faster_whisper import WhisperModel
+from ollama import chat
+import sounddevice as sd
+import edge_tts
+import asyncio
+import subprocess
+
+
+# ==============================
+# 1. WHISPER LOAD
+# ==============================
+
+print("Whisper load ho raha hai...")
+
+whisper = WhisperModel(
+    "small",
+    device="cpu",
+    compute_type="int8"
+)
+
+print("✅ Whisper ready!")
+
+
+# ==============================
+# 2. HINDI TTS
+# ==============================
+
+async def speak(text):
+
+    voice = "hi-IN-SwaraNeural"
+
+    communicate = edge_tts.Communicate(
+        text,
+        voice
+    )
+
+    await communicate.save("response.mp3")
+
+
+# ==============================
+# 3. CONTINUOUS CONVERSATION
+# ==============================
+
+print("\n================================")
+print("🎙️ Hindi Voice Assistant")
+print("================================")
+print("Baat karna start karo.")
+print("Conversation band karne ke liye 'bye' bolo.\n")
+
+
+while True:
+
+    # ==============================
+    # RECORD VOICE
+    # ==============================
+
+    print("🎤 Bolo...")
+
+    audio = sd.rec(
+        int(5 * 16000),
+        samplerate=16000,
+        channels=1,
+        dtype="float32"
+    )
+
+    sd.wait()
+
+    audio = audio.flatten()
+
+    print("✅ Audio record ho gaya.")
+
+
+    # ==============================
+    # SPEECH → TEXT
+    # ==============================
+
+    print("🔄 Speech ko text mein convert kar raha ho...")
+
+    segments, info = whisper.transcribe(
+        audio,
+        language="hi"
+    )
+
+    text = ""
+
+    for segment in segments:
+        text += segment.text
+
+    text = text.strip()
+
+    print("\n📝 Tumne kaha:")
+    print(text)
+
+
+    # ==============================
+    # EXIT CHECK
+    # ==============================
+
+    if text.lower() in ["bye", "exit", "quit", "stop"]:
+
+        print("\n👋 Conversation khatam.")
+        break
+
+
+    # ==============================
+    # TEXT → AI
+    # ==============================
+
+    print("\n🧠 AI soch raha hai...")
+
+    response = chat(
+        model="llama3.2:1b",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Tum ek smart aur helpful Hindi voice assistant ho. "
+                    "User Hindi ya Hinglish mein baat karega. "
+                    "Hamesha natural, simple aur conversational Hindi mein jawab do. "
+
+                    "Sabse important rule: user ki speech transcription ko dhyan se padho. "
+                    "Agar sentence ka meaning clearly samajh aa raha hai, "
+                    "toh sirf usi question ka short aur useful answer do. "
+
+                    "Agar transcription unclear, adhuri, contradictory ya nonsensical ho, "
+                    "toh uska meaning guess mat karo. "
+                    "Sirf bolo: 'मुझे ठीक से समझ नहीं आया, कृपया दोबारा बताइए।' "
+
+                    "Kabhi bhi unclear speech ke basis par imaginary context mat banao. "
+
+                    "User agar technical question puche, "
+                    "toh Python, Java, AI, coding aur technology ke terms English mein rakh sakte ho. "
+
+                    "Jab tak user detail na maange, answer 2 se 4 sentences mein rakho. "
+                    "Unnecessary numbered lists mat banao."
+                )
+            },
+            {
+                "role": "user",
+                "content": text
+            }
+        ]
+    )
+
+    ai_text = response.message.content
+
+    print("\n🤖 AI:")
+    print(ai_text)
+
+
+    # ==============================
+    # AI TEXT → HINDI VOICE
+    # ==============================
+
+    print("\n🔊 AI bol raha hai...")
+
+    asyncio.run(speak(ai_text))
+
+    subprocess.run(
+        ["afplay", "response.mp3"]
+    )
+
+
+    print("\n--------------------------------")
+    print("🔁 Dobara sun raha hoon...")
+    print("--------------------------------\n")
